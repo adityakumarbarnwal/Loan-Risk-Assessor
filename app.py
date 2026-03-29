@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-import os
-import kagglehub
 import plotly.express as px
 import plotly.graph_objects as go
 import seaborn as sns
 import matplotlib.pyplot as plt
+import os
 
 # =========================
 # Page Config
@@ -21,21 +20,26 @@ st.markdown("Interactive dashboard for **loan approval / default prediction** us
 # =========================
 @st.cache_data
 def load_data():
-    path = kagglehub.dataset_download("algozee/credit-risk-and-loan-default-analysis-dataset")
-    files = os.listdir(path)
-    csv_file = [f for f in files if f.endswith(".csv")][0]
-    file_path = os.path.join(path, csv_file)
-    df = pd.read_csv(file_path)
+    df = pd.read_csv("loan_risk_prediction_dataset.csv")
     return df
 
 df = load_data()
 
+if not os.path.exists("loan_risk_prediction_dataset.csv"):
+    st.error("Dataset file missing. Please add it to the project folder.")
+    st.stop()
+
 # =========================
 # Load Model Files
 # =========================
-model = joblib.load("model.pkl")
-scaler = joblib.load("scaler.pkl")
-feature_columns = joblib.load("feature_columns.pkl")
+@st.cache_resource
+def load_model():
+    model = joblib.load("model.pkl")
+    scaler = joblib.load("scaler.pkl")
+    features = joblib.load("feature_columns.pkl")
+    return model, scaler, features
+
+model, scaler, feature_columns = load_model()
 
 # =========================
 # Basic Cleaning (for app visuals only)
@@ -62,7 +66,7 @@ experience = st.sidebar.slider("Years of Experience", 0, 40, 5)
 
 gender = st.sidebar.selectbox("Gender", ["Female", "Male"])
 education = st.sidebar.selectbox("Education", ["Bachelors", "High School", "Masters", "PhD"])
-city = st.sidebar.selectbox("City", ["Chicago", "Houston", "San Fransisco", "New York"])
+city = st.sidebar.selectbox("City", ["Chicago", "Houston", "San Francisco", "New York"])
 employment = st.sidebar.selectbox("Employment Type", ["Salaried", "Self-Employed","Unemployed"])
 
 # =========================
@@ -93,7 +97,7 @@ if f"EmploymentType_{employment}" in feature_columns:
     input_data[f"EmploymentType_{employment}"] = 1
 
 input_df = pd.DataFrame([input_data])
-input_df = input_df[feature_columns]
+input_df = input_df.reindex(columns=feature_columns, fill_value=0)
 
 # =========================
 # Top Metrics
@@ -111,21 +115,40 @@ col4.metric("Avg Credit Score", f"{df['CreditScore'].mean():.0f}")
 # =========================
 st.subheader("🔍 Loan Prediction")
 
-if st.button("Predict Loan Default / Approval"):
+if st.button("🔮 Predict Risk"):
     input_scaled = scaler.transform(input_df)
     prediction = model.predict(input_scaled)[0]
-    probability = model.predict_proba(input_scaled)[0][1]
-
+    prob_approved = model.predict_proba(input_scaled)[0][1]
+    prob_default = 1 - prob_approved
     c1, c2 = st.columns([1, 1])
 
     with c1:
-        if prediction == 1:
+        if prediction == 0:
             st.error(f"⚠️ High Risk / Not Approved")
         else:
             st.success(f"✅ Low Risk / Likely Approved")
 
     with c2:
-        st.info(f"📊 Probability Score: {probability:.2%}")
+        if prediction == 0:
+            st.info(f"📊 Default Risk: {prob_default:.2%}")
+        else:
+            st.info(f"📊 Approval Probability: {prob_approved:.2%}")
+    
+    if prob_default > 0.7:
+        st.error("🔴 High Risk Category")
+    elif prob_default > 0.4:
+        st.warning("🟠 Medium Risk Category")
+    else:
+        st.success("🟢 Low Risk Category")
+
+    if hasattr(model, "feature_importances_"):
+        top_features = pd.DataFrame({
+            "Feature": feature_columns,
+            "Importance": model.feature_importances_
+        }).sort_values(by="Importance", ascending=False).head(3)
+
+        st.subheader("📌 Key Influencing Factors")
+        st.dataframe(top_features)
 
     st.subheader("📄 Customer Input Summary")
     st.dataframe(pd.DataFrame({
