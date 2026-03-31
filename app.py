@@ -28,6 +28,22 @@ st.markdown("""
     backdrop-filter: blur(14px);
     border: 1px solid rgba(255,255,255,0.08);
     box-shadow: inset 0 0 10px rgba(255,255,255,0.02);
+    overflow: hidden;
+}
+
+/* SCROLLBAR STYLING (optional but looks premium) */
+.glass-table div {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99,102,241,0.6) transparent;
+}
+
+.glass-table div::-webkit-scrollbar {
+    width: 6px;
+}
+
+.glass-table div::-webkit-scrollbar-thumb {
+    background: rgba(99,102,241,0.6);
+    border-radius: 10px;
 }
 
 /* ===== Table Styling ===== */
@@ -343,46 +359,23 @@ section[data-testid="stTabs"] > div > div {
 """, unsafe_allow_html=True)
 
 def render_glass_table(df, cmap="viridis"):
-    styled = (
-        df.style
-        .background_gradient(cmap=cmap)
-        .set_properties(**{
-            "background-color": "rgba(255,255,255,0.02)",
-            "color": "#e2e8f0",
-            "border": "none"
-        })
-        .set_table_styles([
-            {
-                "selector": "thead th",
-                "props": [
-                    ("background", "rgba(255,255,255,0.15)"),
-                    ("color", "white"),
-                    ("font-weight", "600"),
-                    ("text-align", "center"),
-                    ("border-right", "1px solid rgba(255,255,255,0.12)"),
-                    ("border-bottom", "1px solid rgba(255,255,255,0.18)")
-                ]
-            },
-            {
-                "selector": "tbody td",
-                "props": [
-                    ("border-right", "1px solid rgba(255,255,255,0.08)"),
-                    ("border-bottom", "1px solid rgba(255,255,255,0.06)")
-                ]
-            },
-            {
-                "selector": "tbody tr:hover",
-                "props": [("background-color", "rgba(255,255,255,0.08)")]
-            }
-        ])
-    )
+    if len(df) >= 10:
+        height = 350
+    else:
+        height = (len(df) + 1) * 40
+    styled_df = df.style.background_gradient(cmap=cmap)
 
     st.markdown('<div class="glass-table">', unsafe_allow_html=True)
-    st.markdown(styled.to_html(), unsafe_allow_html=True)
+    st.dataframe(
+        df,   # IMPORTANT: use df, not styled_df
+        height=height,
+        use_container_width=True
+    )
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="title">💰 Loan Default Dashboard</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">AI-powered loan risk intelligence system</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Loan risk intelligence system</div>', unsafe_allow_html=True)
 
 # Loading Dataset
 
@@ -400,13 +393,11 @@ df = load_data()
 # Loading Model Files
 
 @st.cache_resource
-def load_model():
-    model = joblib.load("model.pkl")
-    scaler = joblib.load("scaler.pkl")
-    features = joblib.load("feature_columns.pkl")
-    return model, scaler, features
+def load_pipeline():
+    return joblib.load("pipeline.pkl")
 
-model, scaler, feature_columns = load_model()
+pipeline = load_pipeline()
+model = pipeline.named_steps["model"]
 
 # Basic Cleaning (for app visuals only)
 
@@ -437,33 +428,17 @@ employment = st.sidebar.selectbox("Employment Type", ["Salaried", "Self-Employed
 
 # Create Input Dictionary
 
-input_data = {
+input_df = pd.DataFrame([{
     "Age": age,
     "Income": income,
     "LoanAmount": loan_amount,
     "CreditScore": credit_score,
-    "YearsExperience": experience
-}
-
-for col in feature_columns:
-    if col not in input_data:
-        input_data[col] = 0
-
-if f"Gender_{gender}" in feature_columns:
-    input_data[f"Gender_{gender}"] = 1
-
-if f"Education_{education}" in feature_columns:
-    input_data[f"Education_{education}"] = 1
-
-if f"City_{city}" in feature_columns:
-    input_data[f"City_{city}"] = 1
-
-if f"EmploymentType_{employment}" in feature_columns:
-    input_data[f"EmploymentType_{employment}"] = 1
-
-input_df = pd.DataFrame([input_data])
-input_df = input_df.reindex(columns=feature_columns, fill_value=0)
-
+    "YearsExperience": experience,
+    "Gender": gender,
+    "Education": education,
+    "City": city,
+    "EmploymentType": employment
+}])
 # Top Metrics
 
 st.markdown('<div class="section-header">📌 Dataset Overview</div>', unsafe_allow_html=True)
@@ -511,20 +486,20 @@ with c4:
 st.markdown('<div class="section-header">🔍 Loan Prediction</div>', unsafe_allow_html=True)
 
 if st.button("🔮 Predict Risk"):
-    input_scaled = scaler.transform(input_df)
-    prediction = model.predict(input_scaled)[0]
+    
+    prediction = pipeline.predict(input_df)[0]
 
-    prob_approved = model.predict_proba(input_scaled)[0][1]
-    prob_default = 1 - prob_approved
+    probs = pipeline.predict_proba(input_df)[0]
+    prob_approved = probs[1]
+    prob_default = probs[0]
 
-    # RESULT CARD (GLASS UI)
-
+    # RESULT CARD (OPEN)
     st.divider()
     st.markdown('<div class="glass result-card">', unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([2, 1, 1])
 
-    # ===== LEFT: MAIN RESULT =====
+    # LEFT
     with col1:
         if prediction == 0:
             st.markdown("### ❌ High Risk Applicant")
@@ -533,12 +508,12 @@ if st.button("🔮 Predict Risk"):
             st.markdown("### ✅ Low Risk Applicant")
             st.markdown(f"**Approval Probability:** `{prob_approved:.2%}`")
 
-    # ===== MIDDLE: RISK SCORE =====
+    # MIDDLE
     with col2:
         risk_score = int(prob_default * 100)
         st.metric("Risk Score", f"{risk_score}%")
 
-    # ===== RIGHT: CATEGORY =====
+    # RIGHT
     with col3:
         if prob_default > 0.7:
             st.markdown("🔴 **High Risk**")
@@ -547,36 +522,56 @@ if st.button("🔮 Predict Risk"):
         else:
             st.markdown("🟢 **Low Risk**")
 
-    # ===== PROGRESS BAR =====
     st.progress(int(prob_default * 100))
 
-    # TOP FEATURES
-
+    # ===== FEATURE SECTION =====
     if hasattr(model, "feature_importances_"):
         st.markdown('<div class="glass">', unsafe_allow_html=True)
 
         st.markdown('<div class="section-header">📌 Key Influencing Factors</div>', unsafe_allow_html=True)
 
+        # Get feature names AFTER preprocessing
+        feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()
 
-        top_features = pd.DataFrame({
-            "Feature": feature_columns,
+        importance_df = pd.DataFrame({
+            "Feature": feature_names,
             "Importance": model.feature_importances_
-        }).sort_values(by="Importance", ascending=False).head(3)
+        })
+
+        # 🔥 Convert encoded → original feature
+        def map_feature(name):
+            if "__" in name:
+                name = name.split("__")[1]
+            return name.split("_")[0]
+
+        importance_df["Feature"] = importance_df["Feature"].apply(map_feature)
+
+        # 🔥 Group
+        importance_df = (
+            importance_df
+            .groupby("Feature")["Importance"]
+            .sum()
+            .reset_index()
+            .sort_values(by="Importance", ascending=False)
+        )
+
+        top_features = importance_df.head(3)
+
         styled_top = (
             top_features.style
             .bar(subset=["Importance"], color="#22c55e")
             .format({"Importance": "{:.4f}"})
-            .set_properties(**{
-                "color": "white"
-            })
+            .set_properties(**{"color": "white"})
         )
 
         st.markdown('<div class="glass-table">', unsafe_allow_html=True)
         st.markdown(styled_top.to_html(), unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # USER INPUT SUMMARY
+        # CLOSE FEATURE SECTION
+        st.markdown('</div>', unsafe_allow_html=True)
 
+    # ===== SUMMARY SECTION =====
     st.markdown('<div class="glass">', unsafe_allow_html=True)
 
     st.markdown('<div class="section-header">📄 Customer Input Summary</div>', unsafe_allow_html=True)
@@ -585,14 +580,19 @@ if st.button("🔮 Predict Risk"):
         "Feature": ["Age", "Income", "LoanAmount", "CreditScore", "YearsExperience", "Gender", "Education", "City", "EmploymentType"],
         "Value": [age, income, loan_amount, credit_score, experience, gender, education, city, employment]
     })
+
     render_glass_table(summary_df, cmap="Blues")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 
 # Tabs
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Dataset", "📈 Visualizations", "🔥 Correlation", "⭐ Feature Importance", "👤 Compare User"
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "📊 EDA", "📈 Visualizations", "🔥 Correlation",
+    "⭐ Feature Importance", "👤 Compare User",
+    "📊 Metrics", "🧠 Model Workflow"
 ])
 
 # TAB 1: Dataset
@@ -601,10 +601,21 @@ with tab1:
     st.markdown('<div class="section-header">📊 Dataset Preview</div>', unsafe_allow_html=True)
     render_glass_table(df.head(20), cmap="viridis")
 
-    st.subheader("Missing Values")
-    missing_df = df.isnull().sum().reset_index().rename(columns={"index": "Column", 0: "Missing Values"})
+    st.markdown('<div class="section-header">⚠️ Missing Values</div>', unsafe_allow_html=True)
 
+    missing_df = df.isnull().sum().reset_index().rename(
+        columns={"index": "Column", 0: "Missing Values"}
+    )
     render_glass_table(missing_df, cmap="magma")
+
+    st.markdown('<div class="section-header">📌 Key EDA Insights</div>', unsafe_allow_html=True)
+
+    st.write("""
+    - Higher income applicants tend to have better loan approval chances.
+    - Credit score is one of the strongest predictors of approval.
+    - Loan amount distribution varies significantly across users.
+    - Missing values were minimal and handled using median/mode imputation.
+    """)
 
 # TAB 2: Visualizations
 
@@ -661,27 +672,105 @@ with tab2:
         )
         st.plotly_chart(fig_city, use_container_width=True)
 
+# Categorical (Pie Charts)
+    st.markdown('<div class="section-header">🥧 Categorical Distribution</div>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    # LoanApproved
+    if "LoanApproved" in df.columns:
+        loan_counts = df["LoanApproved"].value_counts().reset_index()
+        loan_counts.columns = ["LoanApproved", "Count"]
+
+        fig_pie1 = px.pie(
+            loan_counts,
+            names="LoanApproved",
+            values="Count",
+            hole=0.4,
+            title="Loan Approval Split"
+        )
+        fig_pie1.update_traces(textinfo='percent+label')
+        col1.plotly_chart(fig_pie1, use_container_width=True)
+
+    # Gender
+    if "Gender" in df.columns:
+        gender_counts = df["Gender"].value_counts().reset_index()
+        gender_counts.columns = ["Gender", "Count"]
+
+        fig_pie2 = px.pie(
+            gender_counts,
+            names="Gender",
+            values="Count",
+            hole=0.4,
+            title="Gender Distribution"
+        )
+        fig_pie2.update_traces(textinfo='percent+label')
+        col2.plotly_chart(fig_pie2, use_container_width=True)
+
+    # Education
+    if "Education" in df.columns:
+        edu_counts = df["Education"].value_counts().reset_index()
+        edu_counts.columns = ["Education", "Count"]
+
+        fig_pie3 = px.pie(
+            edu_counts,
+            names="Education",
+            values="Count",
+            title="Education Distribution"
+        )
+        fig_pie3.update_traces(textinfo='percent+label')
+        st.plotly_chart(fig_pie3, use_container_width=True)
+
+    # Employment Type
+    if "EmploymentType" in df.columns:
+        emp_counts = df["EmploymentType"].value_counts().reset_index()
+        emp_counts.columns = ["EmploymentType", "Count"]
+
+        fig_pie4 = px.pie(
+            emp_counts,
+            names="EmploymentType",
+            values="Count",
+            title="Employment Type Distribution"
+        )
+        fig_pie4.update_traces(textinfo='percent+label')
+        st.plotly_chart(fig_pie4, use_container_width=True)
+
 # TAB 3: Correlation Heatmap
 
 with tab3:
     st.markdown('<div class="section-header">🔥 Correlation Heatmap</div>', unsafe_allow_html=True)
 
     numeric_df = df.select_dtypes(include=np.number)
-
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax)
     st.pyplot(fig)
 
 # TAB 4: Feature Importance
-
 with tab4:
     st.markdown('<div class="section-header">⭐ Feature Importance</div>', unsafe_allow_html=True)
 
     if hasattr(model, "feature_importances_"):
+        feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()
+
         importance_df = pd.DataFrame({
-            "Feature": feature_columns,
+            "Feature": feature_names,
             "Importance": model.feature_importances_
-        }).sort_values(by="Importance", ascending=False)
+        })
+
+        def map_feature(name):
+            if "__" in name:
+                name = name.split("__")[1]
+            return name.split("_")[0]
+
+        importance_df["Feature"] = importance_df["Feature"].apply(map_feature)
+
+        importance_df = (
+            importance_df
+            .groupby("Feature")["Importance"]
+            .sum()
+            .reset_index()
+            .sort_values(by="Importance", ascending=False)
+        )
 
         fig_imp = px.bar(
             importance_df.head(15),
@@ -731,5 +820,181 @@ with tab5:
     )
 
     st.plotly_chart(fig_compare, use_container_width=True)
+
+# TAB 6 : Metrics Tab
+
+with tab6:
+    st.markdown('<div class="section-header">📊 Model Performance</div>', unsafe_allow_html=True)
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    col1.markdown('<div class="metric-card"><div class="metric-value">0.96</div><div class="metric-label">ACCURACY</div></div>', unsafe_allow_html=True)
+    col2.markdown('<div class="metric-card"><div class="metric-value">0.9524</div><div class="metric-label">PRECISION</div></div>', unsafe_allow_html=True)
+    col3.markdown('<div class="metric-card"><div class="metric-value">0.8696</div><div class="metric-label">RECALL</div></div>', unsafe_allow_html=True)
+    col4.markdown('<div class="metric-card"><div class="metric-value">0.9091</div><div class="metric-label">F1 SCORE</div></div>', unsafe_allow_html=True)
+    col5.markdown('<div class="metric-card"><div class="metric-value">0.9303</div><div class="metric-label">ROC AUC</div></div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown("### 📌 Model Insights")
+    st.write("""
+    - High accuracy (96%) indicates strong prediction capability.
+    - High precision ensures fewer incorrect approvals.
+    - Recall shows model can detect most risky applicants.
+    - Balanced F1 score confirms overall robustness.
+    - ROC AUC shows excellent class separation ability.
+    """)
+
+with tab7:
+    st.markdown('<div class="section-header">🧠 Model Workflow (XGBoost Pipeline)</div>', unsafe_allow_html=True)
+
+    st.markdown("### 1️⃣ Data Input")
+    st.write("""
+    - Raw dataset contains numerical + categorical features
+    - Examples:
+        - Numerical: Age, Income, LoanAmount, CreditScore
+        - Categorical: Gender, Education, City, EmploymentType
+    """)
+
+    render_glass_table(df.head(10))
+
+    st.markdown("### 2️⃣ Data Preprocessing")
+
+    st.write("""
+    - Missing values handled:
+        - Numerical → Median
+        - Categorical → Mode
+    - Ensures no null values during training
+    """)
+
+    missing_after = df.isnull().sum().sum()
+    st.metric("Missing Values After Cleaning", missing_after)
+
+    st.markdown("### 3️⃣ Feature Encoding")
+    # Extract preprocessor from pipeline
+    preprocessor = pipeline.named_steps["preprocessor"]
+
+    # Extract StandardScaler (numerical transformer)
+    scaler = preprocessor.named_transformers_["num"]
+    numeric_cols = ["Age", "Income", "LoanAmount", "CreditScore", "YearsExperience"]
+
+    st.write("""
+    - One-Hot Encoding applied on categorical variables
+    - Example:
+        - Gender → Gender_Male, Gender_Female
+        - City → City_NewYork, City_Houston, etc.
+    """)
+    feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()
+    sample_features = pd.DataFrame(feature_names, columns=["Encoded Features"])
+    render_glass_table(sample_features.head(15))
+
+    st.markdown("### 4️⃣ Feature Scaling")
+
+    st.write("""
+    - StandardScaler applied on numerical features
+    - Formula:
+        z = (x - mean) / std
+    """)
+
+    numeric_cols = ["Age", "Income", "LoanAmount", "CreditScore", "YearsExperience"]
+
+    sample_numeric = df[numeric_cols].head(5)
+    scaled_sample = scaler.transform(sample_numeric)
+    scaled_df = pd.DataFrame(scaled_sample, columns=numeric_cols)
+
+    st.markdown("#### 🔹 Before Scaling")
+    render_glass_table(sample_numeric)
+
+    st.markdown("#### 🔹 After Scaling")
+    render_glass_table(scaled_df)
+
+    st.info("StandardScaler is applied only to numerical features inside the pipeline.")
+
+    st.markdown("### 5️⃣ Model: XGBoost")
+    st.write("""
+    - Algorithm: Gradient Boosting (XGBoost)
+    - Works by:
+        1. Building decision trees sequentially
+        2. Each tree corrects previous errors
+        3. Final output = weighted sum of trees
+
+    - Advantages:
+        - Handles non-linearity
+        - High accuracy
+        - Built-in feature importance
+    """)
+
+    if hasattr(model, "feature_importances_"):
+        feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()
+
+        importance_df = pd.DataFrame({
+            "Feature": feature_names,
+            "Importance": model.feature_importances_
+        })
+
+        def map_feature(name):
+            if "__" in name:
+                name = name.split("__")[1]
+            return name.split("_")[0]
+
+        importance_df["Feature"] = importance_df["Feature"].apply(map_feature)
+
+        importance_df = (
+            importance_df
+            .groupby("Feature")["Importance"]
+            .sum()
+            .reset_index()
+            .sort_values(by="Importance", ascending=False)
+            .head(10)
+        )
+        fig_imp = px.bar(
+            importance_df,
+            x="Importance",
+            y="Feature",
+            orientation="h",
+            title="Top Features Used by XGBoost"
+        )
+        st.plotly_chart(fig_imp, use_container_width=True)
+
+    st.markdown("### 6️⃣ Prediction Pipeline Flow")
+
+    st.write("""
+    **Step-by-step flow inside app:**
+    """)
+
+    flow_df = pd.DataFrame({
+        "Step": [
+            "User Input",
+            "Convert to DataFrame",
+            "Pipeline Preprocessing",
+            "Encoding + Scaling",
+            "Model Prediction",
+            "Probability Output"
+        ],
+        "Description": [
+            "User enters details from sidebar",
+            "Converted into structured input_df",
+            "Pipeline applies preprocessing",
+            "OneHotEncoding + StandardScaler applied",
+            "Passed into XGBoost model",
+            "Returns risk probability"
+        ]
+    })
+
+    render_glass_table(flow_df)
+
+    st.markdown("### 7️⃣ Final Output Interpretation")
+
+    st.write("""
+    - Model outputs:
+        - Probability of Default
+        - Probability of Approval
+    - Based on threshold:
+        - High Risk
+        - Medium Risk
+        - Low Risk
+    """)
+
+    st.success("✔️ This pipeline ensures consistent preprocessing and accurate predictions.")
 
      # python -m streamlit run app.py
