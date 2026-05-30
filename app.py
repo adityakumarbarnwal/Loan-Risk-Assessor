@@ -378,7 +378,6 @@ st.markdown('<div class="title">💰 Loan Default Dashboard</div>', unsafe_allow
 st.markdown('<div class="subtitle">Loan risk intelligence system</div>', unsafe_allow_html=True)
 
 # Loading Dataset
-
 if not os.path.exists("loan_risk_prediction_dataset.csv"):
     st.error("Dataset file missing. Please add it to the project folder.")
     st.stop()
@@ -391,7 +390,6 @@ def load_data():
 df = load_data()
 
 # Loading Model Files
-
 @st.cache_resource
 def load_pipeline():
     return joblib.load("pipeline.pkl")
@@ -400,15 +398,14 @@ pipeline = load_pipeline()
 model = pipeline.named_steps["model"]
 
 # Basic Cleaning (for app visuals only)
-
 df = df.copy()
 
 # Fill missing values for visualization
 for col in df.columns:
-    if df[col].dtype == "object":
-        df[col].fillna(df[col].mode()[0], inplace=True)
+    if pd.api.types.is_numeric_dtype(df[col]):
+        df[col] = df[col].fillna(df[col].median())
     else:
-        df[col].fillna(df[col].median(), inplace=True)
+        df[col] = df[col].fillna(df[col].mode()[0])
 
 # Sidebar Inputs
 
@@ -482,7 +479,6 @@ with c4:
     """, unsafe_allow_html=True)
 
 # Prediction Section
-
 st.markdown('<div class="section-header">🔍 Loan Prediction</div>', unsafe_allow_html=True)
 
 if st.button("🔮 Predict Risk"):
@@ -493,13 +489,13 @@ if st.button("🔮 Predict Risk"):
     prob_approved = probs[1]
     prob_default = probs[0]
 
-    # RESULT CARD (OPEN)
+    # Result Card(Open)
     st.divider()
     st.markdown('<div class="glass result-card">', unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([2, 1, 1])
 
-    # LEFT
+    # Left
     with col1:
         if prediction == 0:
             st.markdown("### ❌ High Risk Applicant")
@@ -508,12 +504,12 @@ if st.button("🔮 Predict Risk"):
             st.markdown("### ✅ Low Risk Applicant")
             st.markdown(f"**Approval Probability:** `{prob_approved:.2%}`")
 
-    # MIDDLE
+    # Middle
     with col2:
         risk_score = int(prob_default * 100)
         st.metric("Risk Score", f"{risk_score}%")
 
-    # RIGHT
+    # Right
     with col3:
         if prob_default > 0.7:
             st.markdown("🔴 **High Risk**")
@@ -524,7 +520,7 @@ if st.button("🔮 Predict Risk"):
 
     st.progress(int(prob_default * 100))
 
-    # ===== FEATURE SECTION =====
+    # Feature Section
     if hasattr(model, "feature_importances_"):
         st.markdown('<div class="glass">', unsafe_allow_html=True)
 
@@ -538,7 +534,7 @@ if st.button("🔮 Predict Risk"):
             "Importance": model.feature_importances_
         })
 
-        # 🔥 Convert encoded → original feature
+        # Converting encoded → original feature
         def map_feature(name):
             if "__" in name:
                 name = name.split("__")[1]
@@ -546,7 +542,7 @@ if st.button("🔮 Predict Risk"):
 
         importance_df["Feature"] = importance_df["Feature"].apply(map_feature)
 
-        # 🔥 Group
+        # Grouping
         importance_df = (
             importance_df
             .groupby("Feature")["Importance"]
@@ -588,15 +584,13 @@ if st.button("🔮 Predict Risk"):
 st.divider()
 
 # Tabs
-
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📊 EDA", "📈 Visualizations", "🔥 Correlation",
     "⭐ Feature Importance", "👤 Compare User",
     "📊 Metrics", "🧠 Model Workflow"
 ])
 
-# TAB 1: Dataset
-
+# Tab 1: Dataset
 with tab1:
     st.markdown('<div class="section-header">📊 Dataset Preview</div>', unsafe_allow_html=True)
     render_glass_table(df.head(20), cmap="viridis")
@@ -617,8 +611,7 @@ with tab1:
     - Missing values were minimal and handled using median/mode imputation.
     """)
 
-# TAB 2: Visualizations
-
+# Tab 2: Visualizations
 with tab2:
     st.markdown('<div class="section-header">📈 Visualizations</div>', unsafe_allow_html=True)
 
@@ -735,8 +728,7 @@ with tab2:
         fig_pie4.update_traces(textinfo='percent+label')
         st.plotly_chart(fig_pie4, use_container_width=True)
 
-# TAB 3: Correlation Heatmap
-
+# Tab 3: Correlation Heatmap
 with tab3:
     st.markdown('<div class="section-header">🔥 Correlation Heatmap</div>', unsafe_allow_html=True)
 
@@ -745,7 +737,7 @@ with tab3:
     sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax)
     st.pyplot(fig)
 
-# TAB 4: Feature Importance
+# Tab 4: Feature Importance
 with tab4:
     st.markdown('<div class="section-header">⭐ Feature Importance</div>', unsafe_allow_html=True)
 
@@ -763,7 +755,6 @@ with tab4:
             return name.split("_")[0]
 
         importance_df["Feature"] = importance_df["Feature"].apply(map_feature)
-
         importance_df = (
             importance_df
             .groupby("Feature")["Importance"]
@@ -780,11 +771,9 @@ with tab4:
             title="Top 15 Important Features"
         )
         st.plotly_chart(fig_imp, use_container_width=True)
-
         render_glass_table(importance_df.head(15), cmap="viridis")
 
-# TAB 5: Compare User with Dataset
-
+# Tab 5: Compare User with Dataset
 with tab5:
     st.markdown('<div class="section-header">👤 Compare User with Dataset Average</div>', unsafe_allow_html=True)
 
@@ -801,7 +790,6 @@ with tab5:
     })
 
     render_glass_table(compare_df, cmap="PuBu")
-
     fig_compare = go.Figure()
     fig_compare.add_trace(go.Bar(
         x=compare_df["Feature"],
@@ -821,11 +809,9 @@ with tab5:
 
     st.plotly_chart(fig_compare, use_container_width=True)
 
-# TAB 6 : Metrics Tab
-
+# Tab 6 : Metrics Tab
 with tab6:
     st.markdown('<div class="section-header">📊 Model Performance</div>', unsafe_allow_html=True)
-
     col1, col2, col3, col4, col5 = st.columns(5)
 
     col1.markdown('<div class="metric-card"><div class="metric-value">0.96</div><div class="metric-label">ACCURACY</div></div>', unsafe_allow_html=True)
