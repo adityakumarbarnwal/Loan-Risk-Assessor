@@ -220,7 +220,9 @@ if st.button("🔮 Predict Risk"):
         "Value": [age, income, loan_amount, credit_score, experience, gender, education, city, employment]
     })
 
-    render_glass_table(summary_df, cmap="Blues")
+    summary_df["Value"] = summary_df["Value"].astype(str)
+
+    render_glass_table(summary_df)
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 

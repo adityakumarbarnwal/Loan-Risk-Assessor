@@ -35,5 +35,5 @@ def render(df,pipeline,model):
             orientation="h",
             title="Top 15 Important Features"
         )
-        st.plotly_chart(fig_imp, width='stretch')
-        render_glass_table(importance_df.head(15), cmap="viridis")
+        st.plotly_chart(fig_imp)
+        render_glass_table(importance_df.head(15))

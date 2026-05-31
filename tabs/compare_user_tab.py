@@ -19,7 +19,7 @@ def render(df, age, income, loan_amount, credit_score, experience):
         ]
     })
 
-    render_glass_table(compare_df, cmap="PuBu")
+    render_glass_table(compare_df)
     fig_compare = go.Figure()
     fig_compare.add_trace(go.Bar(
         x=compare_df["Feature"],
